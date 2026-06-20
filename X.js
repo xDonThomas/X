@@ -388,7 +388,10 @@ class X {
     return this;
   }
 }
+
 const $ = (element) => new X(element);
+const x = (element, attributes = {}, styles = {}, text = "") =>
+  new X().createElement(element, attributes, styles, text);
 
 class Viewer extends X {
   views = [];
