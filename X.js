@@ -473,5 +473,65 @@ class Link extends X {
   }
 }
 
+class Modal extends X {
+  /**
+   * @param {string} title - El título del Pop-up.
+   * @param {string} textContent - El contenido de texto o HTML.
+   */
+  constructor(title, content) {
+    super();
+
+    // 1. Crear el contenedor principal (Fondo)
+    this.createElement("div", {
+      class:
+        "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-300",
+    });
+
+    // 2. Crear la caja del Pop-up y guardarla como propiedad para poder animarla luego
+    this.modalBox = x("div", {
+      class:
+        "bg-white rounded-lg shadow-xl max-w-md w-full overflow-hidden transform scale-95 transition-all duration-300 ease-out",
+    });
+
+    // --- Construir las partes internas ---
+    const header = x("div", {
+      class:
+        "px-6 py-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center",
+    });
+    const titleEl = x(
+      "h3",
+      { class: "text-lg font-semibold text-gray-900" },
+      {},
+      title,
+    );
+    const closeCross = x(
+      "button",
+      { class: "text-gray-400 hover:text-gray-600 text-2xl font-semibold" },
+      {},
+      "&times;",
+    );
+
+    // 3. Ensamblar el componente
+    header.append(titleEl, closeCross);
+
+    this.modalBox.append(header, content);
+    this.append(this.modalBox); // Añadimos la caja al contenedor principal (this)
+
+    // 4. Asignar Eventos Internos
+    closeCross.on("click", () => this.close());
+
+    this.on("click", (e) => {
+      if (e.target === this.element) {
+        this.close();
+      }
+    });
+  }
+
+  close() {
+    this.father.remove(this);
+    return this;
+  }
+}
+
 export default X;
-export { $, Viewer, Link };
+export { $, x, Viewer, Link, Modal };
