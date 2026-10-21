@@ -11,7 +11,7 @@ class X {
   attributes = {};
   /* @type {Array} */
   children = [];
-  
+
   /**
    * Constructor for the X class.
    *
@@ -135,6 +135,10 @@ class X {
     this.element.setAttribute(name, value);
     this.attributes[name] = value;
     return this;
+  }
+
+  getAttribute(name) {
+    return this.attributes[name];
   }
 
   /**
@@ -418,28 +422,28 @@ class Viewer extends X {
 
   addView(view) {
     this._managerViewer("view", view);
-    return this
+    return this;
   }
 
   primaryView(view) {
     this.addView(view);
     this.showView(view._name);
-    return this
+    return this;
   }
 
   addLink(link) {
     this._managerViewer("link", link);
-    return this
+    return this;
   }
 
   addViews(...views) {
     views.forEach((view) => this.addView(view));
-    return this
+    return this;
   }
 
   addLinks(...links) {
     links.forEach((link) => this.addLink(link));
-    return this
+    return this;
   }
 
   showView(name) {
@@ -452,7 +456,7 @@ class Viewer extends X {
         this.views[index].show = false;
       }
     });
-    return this
+    return this;
   }
 }
 
@@ -474,52 +478,38 @@ class Link extends X {
 }
 
 class Modal extends X {
-  /**
-   * @param {string} title - El título del Pop-up.
-   * @param {string} textContent - El contenido de texto o HTML.
-   */
   constructor(title, content) {
     super();
-
-    // 1. Crear el contenedor principal (Fondo)
     this.createElement("div", {
       class:
-        "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-300",
+        "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4",
     });
 
-    // 2. Crear la caja del Pop-up y guardarla como propiedad para poder animarla luego
-    this.modalBox = x("div", {
+    const dialog = x("div", {
       class:
-        "bg-white rounded-lg shadow-xl max-w-md w-full overflow-hidden transform scale-95 transition-all duration-300 ease-out",
+        "bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col",
     });
 
-    // --- Construir las partes internas ---
     const header = x("div", {
-      class:
-        "px-6 py-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center",
-    });
-    const titleEl = x(
-      "h3",
-      { class: "text-lg font-semibold text-gray-900" },
-      {},
-      title,
-    );
-    const closeCross = x(
-      "button",
-      { class: "text-gray-400 hover:text-gray-600 text-2xl font-semibold" },
-      {},
-      "&times;",
+      class: "flex justify-between items-center px-6 py-4 border-b",
+    }).append(
+      x("h3", { class: "text-lg font-bold text-gray-800" }, {}, title),
+      x(
+        "button",
+        { class: "text-gray-400 hover:text-gray-600 text-xl font-bold p-1" },
+        {},
+        "✕",
+      ).on("click", (e) => {
+        e.stopPropagation();
+        this.close();
+      }),
     );
 
-    // 3. Ensamblar el componente
-    header.append(titleEl, closeCross);
+    const body = x("div", { class: "p-6" }).append(content);
+    dialog.append(header, body);
+    this.append(dialog);
 
-    this.modalBox.append(header, content);
-    this.append(this.modalBox); // Añadimos la caja al contenedor principal (this)
-
-    // 4. Asignar Eventos Internos
-    closeCross.on("click", () => this.close());
-
+    // Cerrar al hacer clic en el fondo (blur/backdrop)
     this.on("click", (e) => {
       if (e.target === this.element) {
         this.close();
@@ -528,8 +518,11 @@ class Modal extends X {
   }
 
   close() {
-    this.father.remove(this);
-    return this;
+    if (this.element && this.element.parentNode) {
+      this.element.parentNode.removeChild(this.element);
+    } else if (this.element && typeof this.element.remove === "function") {
+      this.element.remove();
+    }
   }
 }
 
