@@ -1,157 +1,138 @@
+/**
+ * X — lightweight, chainable vanilla JS DOM helper with a tiny view router.
+ */
 class X {
-  /* @type {Element} */
+  /** @type {Element} */
   element;
-  /* @type {string} */
+  /** @type {string|null} */
   _name = null;
-  /* @type {X} */
+  /** @type {X|null} */
   father = null;
-  /* @type {Object} */
+  /** @type {Object} */
   styles = {};
-  /* @type {Object} */
-  attributes = {};
-  /* @type {Array} */
+  /** @type {X[]} */
   children = [];
+  /** @type {Array<[string, Function, Function]>} tracked listeners: [event, original, bound] */
+  _listeners = [];
+  /** @type {Function|null} */
+  _onShow = null;
+  /** @type {Function|null} */
+  _onHide = null;
 
   /**
-   * Constructor for the X class.
+   * Wraps an existing element or CSS selector. Without arguments, nothing is
+   * wrapped yet (use `createElement` afterwards).
    *
-   * @param {string|Element} [element] - The element to set as the current context. If not provided, the constructor will do nothing.
-   * @throws {Error} - If the element is not provided or is not a string or an Element.
+   * NOTE: a string is a CSS *selector* (querySelector), not a tag name.
+   * To create a new element use `new X().createElement('div')` or `x('div')`.
+   *
+   * @param {string|Element} [element]
+   * @throws {Error} If the selector matches nothing or the value is invalid.
    * @example
-   * const element = new X('div')
-   * const anotherElement = new X('p')
+   * const app = new X('#app')
    */
   constructor(element = null) {
-    if (element) {
-      this.setElement(element);
-    } else {
-      this.render();
-    }
-  }
-
-  render() {
-    return this;
+    if (element) this.setElement(element);
   }
 
   /**
    * Creates a new element and sets it as the current context.
+   * `text` is inserted as plain text (safe). Use `.html()` for markup.
    *
-   * @param {string} element - The element to create.
-   * @param {Object} [attributes] - The attributes to set on the element. If not provided, no attributes will be set.
-   * @param {Object} [styles] - The styles to set on the element. If not provided, no styles will be set.
-   * @returns {X} - The current context.
+   * @param {string} tag
+   * @param {Object} [attributes]
+   * @param {Object} [styles]
+   * @param {string} [text]
+   * @returns {X}
    * @example
-   * const element = new X('div').createElement('p')
-   * @throws {Error} - If the element is not provided or is not a string.
+   * const p = new X().createElement('p', { class: 'lead' }, {}, 'Hello')
    */
-  createElement(element, attributes = {}, styles = {}, text = "") {
-    if (!element) {
-      throw new Error("element is required");
-    }
+  createElement(tag, attributes = {}, styles = {}, text = "") {
+    if (!tag) throw new Error("tag is required");
+    if (typeof tag !== "string") throw new Error("tag must be a string");
 
-    if (typeof element !== "string") {
-      throw new Error("element must be a string");
-    }
+    this.element = document.createElement(tag);
 
-    this.element = document.createElement(element);
-
-    if (attributes) {
-      this.setAttributes(attributes);
-    }
-
-    if (styles) {
-      this.setStyles(styles);
-    }
-
-    if (text) {
-      this.html(text);
-    }
+    if (attributes) this.setAttributes(attributes);
+    if (styles) this.setStyles(styles);
+    if (text) this.text(text);
 
     return this;
   }
 
   /**
-   * Sets the element of the current context.
+   * Sets the wrapped element (Element or CSS selector).
    *
-   * If the element is a HTMLElement, it will be used directly.
-   * If the element is a string, it will be used as a CSS selector to find the element.
-   * If the element is not found, an error will be thrown.
-   * If the element is not a HTMLElement, an error will be thrown.
-   *
-   * @param {HTMLElement|string} element - The element to set as the current context.
-   * @returns {X} - The current context.
-   * @throws {Error} - If the element is not found.
+   * @param {Element|string} element
+   * @returns {X}
+   * @throws {Error} If not found or invalid.
    */
   setElement(element) {
-    if (element instanceof HTMLElement) {
+    if (element instanceof Element) {
       this.element = element;
     } else if (typeof element === "string") {
       this.element = document.querySelector(element);
+    } else {
+      throw new Error("element must be a selector string or an Element");
     }
 
-    if (!this.element) {
-      throw new Error("element not found");
-    }
-
+    if (!this.element) throw new Error("element not found");
     return this;
   }
 
   /**
-   * Sets the father of the current context.
+   * Sets an identifier (used by Viewer / Link).
    *
-   * @param {X} father - The father to set.
-   * @returns {X} - The current context.
-   * @throws {Error} - If the father is not an instance of X.
+   * @param {string} name
+   * @returns {X}
+   */
+  name(name) {
+    this._name = name;
+    return this;
+  }
+
+  /**
+   * Appends this element to a parent (X, Element or selector).
+   *
+   * @param {X|Element|string} father
+   * @returns {X}
    */
   setFather(father) {
-    if (!father) {
-      throw new Error("father is required");
-    }
+    if (!father) throw new Error("father is required");
 
-    if (typeof father === "string") {
+    if (typeof father === "string" || father instanceof Element) {
       father = new X(father);
     } else if (!(father instanceof X)) {
-      throw new Error("father must be an instance of X");
+      throw new Error("father must be an X, an Element or a selector");
     }
 
-    father.append(this);
-
-    this.father = father;
-
+    father.appendChild(this);
     return this;
   }
 
   /**
-   * Sets the attribute of the current context.
-   *
-   * @param {string} name - The attribute name.
-   * @param {string} value - The attribute value.
-   * @returns {X} - The current context.
-   * @example
-   * const element = new X('div')
-   * element.setAttribute('id', 'my-id')
+   * @param {string} name
+   * @param {string} value
+   * @returns {X}
    */
   setAttribute(name, value) {
     this.element.setAttribute(name, value);
-    this.attributes[name] = value;
     return this;
   }
 
+  /**
+   * Reads the attribute straight from the DOM (never stale).
+   *
+   * @param {string} name
+   * @returns {string|null}
+   */
   getAttribute(name) {
-    return this.attributes[name];
+    return this.element.getAttribute(name);
   }
 
   /**
-   * Sets the attributes of the current context.
-   *
-   * @param {Object} attributes - The attributes to set. The object should have the attribute name as the key and the attribute value as the value.
-   * @returns {X} - The current context.
-   * @example
-   * const element = new X('div')
-   * element.setAttributes({
-   *     id: 'my-id',
-   *     class: 'my-class'
-   * })
+   * @param {Object} attributes
+   * @returns {X}
    */
   setAttributes(attributes) {
     Object.entries(attributes).forEach(([name, value]) => {
@@ -161,152 +142,116 @@ class X {
   }
 
   /**
-   * Sets the CSS styles of the current context.
-   *
-   * @param {Object} styles - The CSS styles to set. The object should have the CSS property name as the key and the CSS property value as the value.
-   * @returns {X} - The current context.
-   * @example
-   * const element = new X('div')
-   * element.setStyles({
-   *     color: 'red',
-   *     fontSize: '2em'
-   * })
+   * @param {Object} styles - camelCase properties, e.g. { fontSize: '2em' }
+   * @returns {X}
    */
   setStyles(styles) {
     Object.entries(styles).forEach(([name, value]) => {
       this.element.style[name] = value;
-
       this.styles[name] = value;
     });
     return this;
   }
 
   /**
-   * Appends a child element to the current context.
+   * Appends a child. Accepts X, Element or string (inserted as text).
    *
-   * @param {X} child - The child element to append.
-   * @returns {X} - The current context.
-   * @example
-   * const parent = new X('div')
-   * const child = new X('p')
-   * parent.appendChild(child)
+   * @param {X|Element|string} child
+   * @returns {X}
    */
   appendChild(child) {
-    if (!child) {
+    if (child === null || child === undefined || child === "") {
       throw new Error("child is required");
     }
 
-    if (!(child instanceof X)) {
-      throw new Error("child must be an instance of X");
+    if (child instanceof X) {
+      if (child.father && child.father !== this) child.father.removeChild(child);
+      this.element.appendChild(child.element);
+      if (!this.children.includes(child)) this.children.push(child);
+      child.father = this;
+    } else if (child instanceof Node) {
+      this.element.appendChild(child);
+    } else if (typeof child === "string") {
+      this.element.appendChild(document.createTextNode(child));
+    } else {
+      throw new Error("child must be an X, a Node or a string");
     }
-
-    this.element.appendChild(child.element);
-
-    this.children.push(child);
 
     return this;
   }
 
   /**
-   * Removes a child element from the current context.
+   * Removes a child. No error if it is already detached.
    *
-   * @param {X} child - The child element to remove.
-   * @returns {X} - The current context.
-   * @example
-   * const parent = new X('div')
-   * const child = new X('p')
-   * parent.removeChild(child)
+   * @param {X|Element} child
+   * @returns {X}
    */
   removeChild(child) {
-    if (!child) {
-      throw new Error("child is required");
+    if (!child) throw new Error("child is required");
+
+    if (child instanceof X) {
+      if (child.element.parentNode === this.element) {
+        this.element.removeChild(child.element);
+      }
+      this.children = this.children.filter((c) => c !== child);
+      if (child.father === this) child.father = null;
+    } else if (child instanceof Node) {
+      if (child.parentNode === this.element) this.element.removeChild(child);
+    } else {
+      throw new Error("child must be an X or a Node");
     }
-
-    if (!(child instanceof X)) {
-      throw new Error("child must be an instance of X");
-    }
-
-    this.element.removeChild(child.element);
-
-    this.children = this.children.filter((c) => c !== child);
 
     return this;
   }
 
-  /**
-   * Manages children of the current context.
-   *
-   * @param {string} action - The action to perform on the children. It can be either "append" or "remove".
-   * @param {X|X[]} children - The children to manage. If children is an instance of X, it will be managed as a single child. If children is an array of X, all children in the array will be managed.
-   * @returns {X} - The current context.
-   * @example
-   * const parent = new X('div')
-   * const child1 = new X('p')
-   * const child2 = new X('p')
-   * parent._manageChildren('append', [child1, child2])
-   * parent._manageChildren('remove', child1)
-   */
   _manageChildren(action, children) {
     const method = action === "append" ? "appendChild" : "removeChild";
-    children.forEach((child) => this[method](child));
+    children.flat().forEach((child) => this[method](child));
     return this;
   }
 
   /**
-   * Appends one or more children to the current context.
-   *
-   * @param {X|X[]} children - The children to append. If children is an instance of X, it will be appended as a single child. If children is an array of X, all children in the array will be appended.
-   * @returns {X} - The current context.
+   * @param {...(X|Element|string|Array)} children
+   * @returns {X}
    * @example
-   * const parent = new X('div')
-   * const child1 = new X('p')
-   * const child2 = new X('p')
-   * parent.append(child1)
-   * parent.append([child2])
+   * parent.append(a, b)
+   * parent.append([a, b])
    */
   append(...children) {
     return this._manageChildren("append", children);
   }
 
   /**
-   * Removes one or more children from the current context.
-   *
-   * @param {X|X[]} children - The children to remove. If children is an instance of X, it will be removed as a single child. If children is an array of X, all children in the array will be removed.
-   * @returns {X} - The current context.
-   * @example
-   * const parent = new X('div')
-   * const child1 = new X('p')
-   * const child2 = new X('p')
-   * parent.remove(child1)
-   * parent.remove([child2])
+   * @param {...(X|Element|Array)} children
+   * @returns {X}
    */
   remove(...children) {
     return this._manageChildren("remove", children);
   }
 
   /**
-   * Adds one or more classes to the current context.
+   * Removes every child.
    *
-   * @param {string[]} classes - The classes to add.
-   * @returns {X} - The current context.
-   * @example
-   * const element = new X('div')
-   * element.addClass('my-class')
+   * @returns {X}
    */
+  empty() {
+    [...this.children].forEach((c) => this.removeChild(c));
+    this.element.textContent = "";
+    return this;
+  }
 
+  /**
+   * @param {...string} classes
+   * @returns {X}
+   */
   addClass(...classes) {
     this.element.classList.add(...classes);
     return this;
   }
 
   /**
-   * Removes one or more classes from the current context.
-   *
-   * @param {string[]} classes - The classes to remove.
-   * @returns {X} - The current context.
-   * @example
-   * const element = new X('div')
-   * element.removeClass('my-class')
+   * @param {...string} classes
+   * @returns {X}
    */
   removeClass(...classes) {
     this.element.classList.remove(...classes);
@@ -314,64 +259,67 @@ class X {
   }
 
   /**
-   * Adds an event listener to the current context.
-   *
-   * @param {string} event - The event to listen for.
-   * @param {function} callback - The callback function to call when the event is triggered.
-   * @returns {X} - The current context.
-   * @example
-   * const element = new X('div')
-   * element.on('click', () => console.log('clicked'))
+   * @param {string} cls
+   * @param {boolean} [force]
+   * @returns {X}
    */
-  on(event, callback) {
-    this.element.addEventListener(event, callback);
+  toggleClass(cls, force) {
+    this.element.classList.toggle(cls, force);
     return this;
   }
 
   /**
-   * Removes an event listener from the current context.
+   * Adds an event listener (tracked so `destroy()` can clean it).
    *
-   * @param {string} event - The event to stop listening for.
-   * @param {function} callback - The callback function to stop calling when the event is triggered.
-   * @returns {X} - The current context.
-   * @example
-   * const element = new X('div')
-   * element.off('click', () => console.log('clicked'))
+   * @param {string} event
+   * @param {Function} callback
+   * @param {AddEventListenerOptions|boolean} [options]
+   * @returns {X}
    */
-  off(event, callback) {
-    this.element.removeEventListener(event, callback);
+  on(event, callback, options) {
+    this.element.addEventListener(event, callback, options);
+    this._listeners.push([event, callback, options]);
     return this;
   }
 
   /**
-   * Sets the hover style for the current context.
+   * Removes a listener. Pass the SAME function reference used in `on()`
+   * (anonymous functions cannot be removed).
    *
-   * @param {string} style - The CSS style to modify.
-   * @param {string} defaultColor - The default color to set when the mouse is not over the element.
-   * @param {string} hoverColor - The color to set when the mouse is over the element.
-   * @returns {X} - The current context.
-   * @example
-   * const element = new X('div')
-   * element.hoverStyle('backgroundColor', 'white', 'gray')
+   * @param {string} event
+   * @param {Function} callback
+   * @param {AddEventListenerOptions|boolean} [options]
+   * @returns {X}
    */
-  hoverStyle(style, defaultColor, hoverColor) {
-    this.element.addEventListener("mouseover", (e) => {
-      e.target.style[style] = hoverColor;
-    });
-    this.element.addEventListener("mouseout", (e) => {
-      e.target.style[style] = defaultColor;
-    });
+  off(event, callback, options) {
+    this.element.removeEventListener(event, callback, options);
+    this._listeners = this._listeners.filter(
+      ([e, cb]) => !(e === event && cb === callback),
+    );
     return this;
   }
 
   /**
-   * Sets the inner HTML of the current context.
+   * Sets a style on mouse enter and restores it on mouse leave.
    *
-   * @param {string} html - The inner HTML to set.
-   * @returns {X} - The current context.
+   * @param {string} style - camelCase CSS property.
+   * @param {string} defaultValue
+   * @param {string} hoverValue
+   * @returns {X}
    * @example
-   * const element = new X('div')
-   * element.html('<p>Hello, world!</p>')
+   * el.hoverStyle('backgroundColor', 'white', 'gray')
+   */
+  hoverStyle(style, defaultValue, hoverValue) {
+    this.on("mouseenter", () => (this.element.style[style] = hoverValue));
+    this.on("mouseleave", () => (this.element.style[style] = defaultValue));
+    return this;
+  }
+
+  /**
+   * Sets innerHTML. ⚠️ Never pass untrusted input; use `text()` instead.
+   *
+   * @param {string} html
+   * @returns {X}
    */
   html(html) {
     this.element.innerHTML = html;
@@ -379,45 +327,103 @@ class X {
   }
 
   /**
-   * Sets the text content of the current context.
+   * Sets textContent (safe).
    *
-   * @param {string} text - The text content to set.
-   * @returns {X} - The current context.
-   * @example
-   * const element = new X('div')
-   * element.text('Hello, world!')
+   * @param {string} text
+   * @returns {X}
    */
   text(text) {
     this.element.textContent = text;
     return this;
   }
+
+  /**
+   * Hook called when this X is shown by a Viewer.
+   *
+   * @param {Function} fn
+   * @returns {X}
+   */
+  onShow(fn) {
+    this._onShow = fn;
+    return this;
+  }
+
+  /**
+   * Hook called when this X is hidden by a Viewer.
+   *
+   * @param {Function} fn
+   * @returns {X}
+   */
+  onHide(fn) {
+    this._onHide = fn;
+    return this;
+  }
+
+  /**
+   * Detaches from the DOM, removes tracked listeners and destroys children.
+   *
+   * @returns {X}
+   */
+  destroy() {
+    [...this.children].forEach((c) => c.destroy());
+    this._listeners.forEach(([e, cb, opt]) =>
+      this.element.removeEventListener(e, cb, opt),
+    );
+    this._listeners = [];
+    if (this.father) this.father.removeChild(this);
+    else this.element.remove();
+    return this;
+  }
 }
 
 const $ = (element) => new X(element);
-const x = (element, attributes = {}, styles = {}, text = "") =>
-  new X().createElement(element, attributes, styles, text);
+const x = (tag, attributes = {}, styles = {}, text = "") =>
+  new X().createElement(tag, attributes, styles, text);
 
+/**
+ * Minimal view manager. Only the active view is attached to the DOM.
+ * With `{ hash: true }` it syncs with `location.hash` (back button works).
+ */
 class Viewer extends X {
+  /** @type {Array<{name: string, view?: X, link?: X}>} */
   views = [];
+  /** @type {string|null} */
+  current = null;
+  /** @type {string|null} */
+  _primary = null;
+
   /**
-   * Constructor for the $Viewer class.
-   *
-   * Sets the element of the current context to an article with the id "viewer".
-   * Sets the inner html of the element to a heading element with the text "Viewer".
+   * @param {{hash?: boolean}} [options]
    */
-  constructor() {
+  constructor({ hash = false } = {}) {
     super();
     this.createElement("article", { class: "viewer" });
+    this.hash = hash;
+
+    if (hash) {
+      this._onHashChange = () => {
+        const name = decodeURIComponent(location.hash.slice(1));
+        if (this._find(name)?.view) this.showView(name);
+        else if (this._primary) this.showView(this._primary);
+      };
+      window.addEventListener("hashchange", this._onHashChange);
+    }
+  }
+
+  _find(name) {
+    return this.views.find((v) => v.name === name);
   }
 
   _managerViewer(identifier, element) {
-    let index = this.views.findIndex((view) => view.name === element._name);
-    if (index === -1) {
-      let viewIndex = this.views.push({ name: element._name, show: false });
-      this.views[--viewIndex][identifier] = element;
-    } else {
-      this.views[index][identifier] = element;
+    if (!element._name) {
+      throw new Error("view/link needs a name (use .name('...'))");
     }
+    let entry = this._find(element._name);
+    if (!entry) {
+      entry = { name: element._name };
+      this.views.push(entry);
+    }
+    entry[identifier] = element;
   }
 
   addView(view) {
@@ -425,9 +431,8 @@ class Viewer extends X {
     return this;
   }
 
-  primaryView(view) {
-    this.addView(view);
-    this.showView(view._name);
+  addViews(...views) {
+    views.flat().forEach((v) => this.addView(v));
     return this;
   }
 
@@ -436,48 +441,109 @@ class Viewer extends X {
     return this;
   }
 
-  addViews(...views) {
-    views.forEach((view) => this.addView(view));
-    return this;
-  }
-
   addLinks(...links) {
-    links.forEach((link) => this.addLink(link));
+    links.flat().forEach((l) => this.addLink(l));
     return this;
   }
 
-  showView(name) {
-    this.views.forEach((view, index) => {
-      if (view.name === name && view.view) {
-        this.appendChild(view.view);
-        this.views[index].show = true;
-      } else if (this.views[index].show) {
-        this.removeChild(view.view);
-        this.views[index].show = false;
-      }
-    });
+  /**
+   * Registers the default view and shows it (or the one in the URL hash).
+   *
+   * @param {X} view
+   * @returns {Viewer}
+   */
+  primaryView(view) {
+    this.addView(view);
+    this._primary = view._name;
+    const fromHash = this.hash
+      ? decodeURIComponent(location.hash.slice(1))
+      : null;
+    this.showView(fromHash && this._find(fromHash)?.view ? fromHash : view._name);
     return this;
+  }
+
+  /**
+   * @param {string} name
+   * @returns {Viewer}
+   * @throws {Error} If no view has that name.
+   */
+  showView(name) {
+    const target = this._find(name);
+    if (!target || !target.view) {
+      throw new Error(`view "${name}" not found`);
+    }
+    if (this.current === name) return this;
+
+    const previous = this.current ? this._find(this.current) : null;
+    if (previous) {
+      this.removeChild(previous.view);
+      previous.view._onHide?.();
+      previous.link?.removeClass("active").element.removeAttribute("aria-current");
+    }
+
+    this.appendChild(target.view);
+    this.current = name;
+    target.link?.addClass("active").setAttribute("aria-current", "page");
+    target.view._onShow?.();
+
+    if (this.hash && decodeURIComponent(location.hash.slice(1)) !== name) {
+      location.hash = encodeURIComponent(name);
+    }
+
+    return this;
+  }
+
+  destroy() {
+    if (this._onHashChange) {
+      window.removeEventListener("hashchange", this._onHashChange);
+    }
+    return super.destroy();
   }
 }
 
+/**
+ * Accessible navigation link bound to a Viewer view.
+ * Renders `<a href="#name">`.
+ */
 class Link extends X {
+  /**
+   * @param {Viewer} viewer
+   * @param {string} text
+   * @param {string} href - name of the target view.
+   * @param {string} [title]
+   * @param {Object} [styles]
+   */
   constructor(viewer, text, href, title, styles = {}) {
     super();
-    this.createElement("span", { href, title }, styles, text);
-
-    this.setStyles({ cursor: "pointer" });
+    this.createElement(
+      "a",
+      { href: `#${encodeURIComponent(href)}`, ...(title ? { title } : {}) },
+      { cursor: "pointer", ...styles },
+      text,
+    );
 
     this._name = href;
-
     viewer.addLink(this);
 
-    this.on("click", () => {
-      viewer.showView(this._name);
-    });
+    // In hash mode the native anchor navigation + hashchange does the work.
+    if (!viewer.hash) {
+      this.on("click", (e) => {
+        e.preventDefault();
+        viewer.showView(this._name);
+      });
+    }
   }
 }
 
+/**
+ * Modal dialog. ⚠️ Styled with Tailwind utility classes: include Tailwind
+ * (or provide equivalent CSS) for it to look right.
+ */
 class Modal extends X {
+  /**
+   * @param {string} title - plain text.
+   * @param {X|Element|string} content
+   */
   constructor(title, content) {
     super();
     this.createElement("div", {
@@ -485,18 +551,27 @@ class Modal extends X {
         "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4",
     });
 
+    const titleId = `modal-title-${Math.random().toString(36).slice(2, 8)}`;
+
     const dialog = x("div", {
       class:
         "bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-labelledby": titleId,
     });
 
     const header = x("div", {
       class: "flex justify-between items-center px-6 py-4 border-b",
     }).append(
-      x("h3", { class: "text-lg font-bold text-gray-800" }, {}, title),
+      x("h3", { class: "text-lg font-bold text-gray-800", id: titleId }, {}, title),
       x(
         "button",
-        { class: "text-gray-400 hover:text-gray-600 text-xl font-bold p-1" },
+        {
+          type: "button",
+          "aria-label": "Close",
+          class: "text-gray-400 hover:text-gray-600 text-xl font-bold p-1",
+        },
         {},
         "✕",
       ).on("click", (e) => {
@@ -509,20 +584,37 @@ class Modal extends X {
     dialog.append(header, body);
     this.append(dialog);
 
-    // Cerrar al hacer clic en el fondo (blur/backdrop)
+    // Close when clicking the backdrop
     this.on("click", (e) => {
-      if (e.target === this.element) {
-        this.close();
-      }
+      if (e.target === this.element) this.close();
     });
+
+    this._onKeydown = (e) => {
+      if (e.key === "Escape") this.close();
+    };
   }
 
+  /**
+   * Attaches the modal to the page (document.body by default).
+   *
+   * @param {Element} [parent]
+   * @returns {Modal}
+   */
+  open(parent = document.body) {
+    parent.appendChild(this.element);
+    document.addEventListener("keydown", this._onKeydown);
+    return this;
+  }
+
+  /**
+   * Removes the modal from the page.
+   *
+   * @returns {Modal}
+   */
   close() {
-    if (this.element && this.element.parentNode) {
-      this.element.parentNode.removeChild(this.element);
-    } else if (this.element && typeof this.element.remove === "function") {
-      this.element.remove();
-    }
+    document.removeEventListener("keydown", this._onKeydown);
+    this.element.remove();
+    return this;
   }
 }
 
